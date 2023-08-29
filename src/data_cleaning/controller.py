@@ -252,7 +252,7 @@ def join_prixm2(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_opportunities() -> pd.DataFrame:
+def load_opportunities(drop_numero_opportunite: bool = True) -> pd.DataFrame:
     df = import_opportunities()
 
     # Drop double in 'N° Opportunité'
@@ -260,6 +260,7 @@ def load_opportunities() -> pd.DataFrame:
 
     # Filter columns
     keep_cols = [
+        "N° Opportunité",
         "Montant",
         "Origine de l'opportunité",
         "Opération",
@@ -301,6 +302,9 @@ def load_opportunities() -> pd.DataFrame:
     df = join_prixm2(df)
 
     df = df.drop(["Code INSEE"], axis=1)
+
+    if drop_numero_opportunite:
+        df = df.drop(["N° Opportunité"], axis=1)
 
     return df
 
