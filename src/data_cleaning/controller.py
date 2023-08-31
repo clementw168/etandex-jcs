@@ -355,6 +355,9 @@ def load_train_test_split(
     sample_weight = (sample_weight - 3).clip(lower=0)
     sample_weight = (0.2 - 1) / sample_weight.max() * sample_weight + 1
 
+    # add 1 to the sample weight of the positive examples
+    sample_weight = sample_weight + labels.astype(int)
+
     features = opportunities.drop(
         ["Label", "opportunity_age"],
         axis=1,
