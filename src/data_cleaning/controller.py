@@ -63,6 +63,17 @@ def create_labels(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def create_opportunity_age(df: pd.DataFrame) -> pd.DataFrame:
+    df["opportunity_age"] = (
+        pd.to_datetime("today")
+        - pd.to_datetime(df["Date de création"], format="%d/%m/%Y")
+    ).dt.days / 365
+
+    df = df.drop(["Date de création"], axis=1)
+
+    return df
+
+
 def load_staff(opportunities: pd.DataFrame) -> pd.DataFrame:
     staff = pd.read_csv("data/Staff.csv", sep=";", encoding="ISO-8859-1")
 
@@ -212,7 +223,11 @@ def join_insee_communes(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     df = pd.merge(
-        df, insee_com, left_on="code_postal", right_on="Code Postal", how="left"
+        df,
+        insee_com.drop_duplicates(subset=["Code Postal"]),
+        left_on="code_postal",
+        right_on="Code Postal",
+        how="left",
     )
 
     df = df.drop(
@@ -231,12 +246,24 @@ def join_insee_communes(df: pd.DataFrame) -> pd.DataFrame:
             "Code Commune",
             "Code Canton",
             "Code Arrondissement",
-            "Code Département",
+            # "Code Département",
             "Code Région",
             "hash_commune",
+            "longitude",
+            "latitude",
+            "Superficie",
+            "Population",
+            "densite",
+            "Altitude Moyenne",
         ],
         axis=1,
     )
+
+    # replace 'Code Département' '2A' and '2B' by '20'
+    df.loc[df["Code Département"] == "2A", "Code Département"] = "20"
+    df.loc[df["Code Département"] == "2B", "Code Département"] = "20"
+
+    df["Code Département"] = df["Code Département"].astype(float)
 
     return df
 
@@ -274,8 +301,11 @@ def load_opportunities(drop_numero_opportunite: bool = True) -> pd.DataFrame:
         "Resp.",
         "Resp..1",
         "Ville",
+        "Date de création",
     ]
     df = df[keep_cols]
+
+    df = create_opportunity_age(df)
 
     # 'Montant' to float, drop NaN in 'Montant', drop negative values in 'Montant'
     df = process_montant(df)
@@ -299,7 +329,7 @@ def load_opportunities(drop_numero_opportunite: bool = True) -> pd.DataFrame:
 
     df = join_insee_communes(df)
 
-    df = join_prixm2(df)
+    # df = join_prixm2(df)
 
     df = df.drop(["Code INSEE"], axis=1)
 
@@ -311,23 +341,35 @@ def load_opportunities(drop_numero_opportunite: bool = True) -> pd.DataFrame:
 
 def load_train_test_split(
     drop_na: bool = False, test_size: float = 0.2, random_state: int = 42
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[
+    pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
+]:
     opportunities = load_opportunities()
     if drop_na:
         opportunities = opportunities.dropna()
 
     labels = opportunities["Label"].astype(bool)
-    features = opportunities.drop("Label", axis=1)
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    # sample weight is 1 for opportunities younger than 3 years old and 0.2 for the oldest ones, linearly decreasing
+    sample_weight = opportunities["opportunity_age"]
+    sample_weight = (sample_weight - 3).clip(lower=0)
+    sample_weight = (0.2 - 1) / sample_weight.max() * sample_weight + 1
+
+    features = opportunities.drop(
+        ["Label", "opportunity_age"],
+        axis=1,
+    )
+
+    X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
         features,
         labels,
+        sample_weight,
         test_size=test_size,
         random_state=random_state,
         stratify=labels,
     )
 
-    return X_train, y_train, X_test, y_test
+    return X_train, y_train, w_train, X_test, y_test, w_test
 
 
 def load_opportunities_for_chantiers() -> pd.DataFrame:
